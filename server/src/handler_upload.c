@@ -32,14 +32,18 @@
 #include <stdio.h>
 #include <limits.h>
 #include <dirent.h>
+#include <libgen.h>
 
 #include "server.h"
 #include "dynlib.h"
 #include "dyn_containers_interface.h"
 
+extern const char compiler_output_dir[];
+static const char *engine_dir = compiler_output_dir;
+static const char engine_extensions[][5] = { "c", "h", "sctx", "smv"};
+static const char sccharts_compiler_nuxmv_command[] = "java -jar \"$KICO_PATH\"/kico.jar -s de.cau.cs.kieler.sccharts.verification.nuxmv";
 
-const static char engine_dir[] = "engines";
-const static char engine_extensions[][5] = { "c", "h", "sctx" };
+static const char nuxmv_command[] = "nuXmv -source ../src/engines/engine_nuxmv_commands.txt";
 
 extern pthread_mutex_t dyn_containers_mutex;
 
@@ -69,8 +73,9 @@ bool remove_engine_files(const char library_name[]) {
 	strcpy(name, library_name + 3);
 	
 	int result = 0;
+	int extension_count = sizeof(engine_extensions)/sizeof(engine_extensions[0]);
 	char filepath[PATH_MAX + NAME_MAX];
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < extension_count; i++) {
 		sprintf(filepath, "%s/%s.%s", engine_dir, name, engine_extensions[i]);
 		result = remove(filepath);
 	}
@@ -94,6 +99,31 @@ void remove_file_extension(char filepath_destination[],
     filepath_destination[filepath_len - extension_len] = '\0';
 }
 
+bool verify_engine(const char filepath[]) {
+	// Get the filename
+	char filepath_copy[PATH_MAX + NAME_MAX];
+	strncpy(filepath_copy, filepath, PATH_MAX + NAME_MAX);
+	
+	// Compile the SCCharts model to an nuXmv model
+	char command[MAX_INPUT + 2 * (PATH_MAX + NAME_MAX)];
+	sprintf(command, "%s -o %s %s.sctx", sccharts_compiler_nuxmv_command, compiler_output_dir, filepath);
+
+	int ret = system(command);
+	if (ret == -1 || WEXITSTATUS(ret) != 0) {
+		return false;
+	}
+		
+	sprintf(command, "%s %s.smv", nuxmv_command, filepath);
+	ret = system(command);
+	if (ret == -1 || WEXITSTATUS(ret) != 0) {
+		return false;
+	}
+	
+	// TODO: Analyse verification results
+	
+	return true;
+}
+
 onion_connection_status handler_upload_engine(void *_, onion_request *req,
                                               onion_response *res) {
 	build_response_header(res);
@@ -113,7 +143,12 @@ onion_connection_status handler_upload_engine(void *_, onion_request *req,
 
 		char filepath[sizeof(final_filepath)];
 		remove_file_extension(filepath, final_filepath, ".sctx");
-		dynlib_status status = dynlib_compile_scchart_to_c(filepath);
+		const bool verified = verify_engine(filepath);
+		if (!verified) {
+			syslog_server(LOG_ERR, "Request: Upload - engine file %s could not be verified", filepath);
+			return OCS_NOT_IMPLEMENTED;
+		}
+		const dynlib_status status = dynlib_compile_scchart_to_c(filepath);
 		if (status == DYNLIB_COMPILE_C_ERR || status == DYNLIB_COMPILE_SHARED_ERR) {
 			syslog_server(LOG_ERR, "Request: Upload - engine file %s could not be compiled", filepath);
 			return OCS_NOT_IMPLEMENTED;

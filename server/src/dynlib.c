@@ -7,12 +7,12 @@
 #include "dynlib.h"
 #include "server.h"
 
-const char dynlib_symbol_reset[] = "reset";
-const char dynlib_symbol_tick[] = "tick";
+static const char dynlib_symbol_reset[] = "reset";
+static const char dynlib_symbol_tick[] = "tick";
 
 const char compiler_output_dir[] = "engines";
-const char sccharts_compiler_command[] = "java -jar \"$KICO_PATH\"/kico.jar -s de.cau.cs.kieler.sccharts.netlist";
-const char c_compiler_command[] = "clang -shared -fpic -Wall -Wextra";
+static const char sccharts_compiler_c_command[] = "java -jar \"$KICO_PATH\"/kico.jar -s de.cau.cs.kieler.sccharts.netlist";
+static const char c_compiler_command[] = "clang -shared -fpic -Wall -Wextra";
 
 
 // Compiles a given SCCharts model into a dynamic library
@@ -24,7 +24,7 @@ dynlib_status dynlib_compile_scchart_to_c(const char filepath[]) {
 	
 	// Compile the SCCharts model to a C file
 	char command[MAX_INPUT + 2 * (PATH_MAX + NAME_MAX)];
-	sprintf(command, "%s -o %s %s.sctx", sccharts_compiler_command, compiler_output_dir, filepath);
+	sprintf(command, "%s -o %s %s.sctx", sccharts_compiler_c_command, compiler_output_dir, filepath);
 
 	int ret = system(command);
 	if (ret == -1 || WEXITSTATUS(ret) != 0) {

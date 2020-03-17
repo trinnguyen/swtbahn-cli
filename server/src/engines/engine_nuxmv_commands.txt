@@ -1,0 +1,4 @@
+go_msat
+msat_check_invar_inc_coi -p "nominal_speed < 127"
+msat_check_invar_inc_coi -p "nominal_speed >= 0"
+quit
